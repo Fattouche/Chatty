@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package node;
+
+message Peer{
+    string priv_ip = 1;
+    string pub_ip = 2;
+    string name = 3;
+    string friend = 4;
+    string filename = 5;
+    string filepath = 6;
+    string filesize = 7;
+}
+
+message Response{
+    string status = 1;
+}
+
+message Node{
+    repeated string nodes=1;
+    bool notify_others = 2;
+}
+
+service LoadBalancer{
+    rpc RegisterNode(Node) returns(Response) {}
+}
+
+service Server{
+    rpc NodeDown(Node) returns(Response) {}
+    rpc PeerArrival(Peer) returns(Response) {}
+}
+
