@@ -17,8 +17,8 @@ message Response{
 }
 
 message Node{
-    repeated string nodes=1;
-    bool notify_others = 2;
+    repeated string nodes = 1;
+    int32 notify_others = 2;
 }
 
 service LoadBalancer{
