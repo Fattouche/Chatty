@@ -17,13 +17,16 @@ message Response{
     string status = 1;
 }
 
+message Request{}
+
 message Node{
-    repeated string nodes = 1;
+    repeated string node = 1;
     int32 notify_others = 2;
 }
 
 service LoadBalancer{
     rpc RegisterNode(Node) returns(NodeList) {}
+    rpc ConnectToFriend(Request) returns(Node) {}
 }
 
 service Server{
