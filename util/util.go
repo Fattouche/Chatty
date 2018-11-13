@@ -12,7 +12,7 @@ import (
 )
 
 // externalIP searches through the machines interfaces to collect its private IP within the subnet.
-func privateIP() (string, error) {
+func PrivateIP() (string, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return "", err
@@ -50,7 +50,7 @@ func privateIP() (string, error) {
 }
 
 //  generateTLSConfig is used to create a basic tls configuration for quic protocol.
-func generateTLSConfig() *tls.Config {
+func GenerateTLSConfig() *tls.Config {
 	key, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
 		panic(err)
