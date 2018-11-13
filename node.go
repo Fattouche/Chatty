@@ -2,18 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"log"
-	"math/big"
 	"time"
 
 	pb "github.com/Fattouche/Chatty/protobuff"
+	util "github.com/Fattouche/Chatty/util"
 	quic "github.com/lucas-clemente/quic-go"
 	"google.golang.org/grpc"
 )
@@ -22,12 +17,13 @@ const (
 	NOTIFY_OTHERS      = 1
 	DONT_NOTIFY_OTHERS = 2
 	PORT               = "50003"
+	LB_IP              = "127.0.0.1:5004"
 )
 
 type server struct{}
 
 var nodeMap = make(map[string]int)
-var peerMap = make(map[string]*pb.Peer)
+var peerMap map[string]*pb.Peer
 
 func (s *server) NodeDown(ctx context.Context, nodes *pb.Node) (*pb.Response, error) {
 	var status string
@@ -98,27 +94,6 @@ func (s *server) PeerRemoval(ctx context.Context, peer *pb.Peer) (*pb.Response, 
 	return &pb.Response{Status: "ok"}, nil
 }
 
-//  generateTLSConfig is used to create a basic tls configuration for quic protocol.
-func generateTLSConfig() *tls.Config {
-	key, err := rsa.GenerateKey(rand.Reader, 1024)
-	if err != nil {
-		panic(err)
-	}
-	template := x509.Certificate{SerialNumber: big.NewInt(1)}
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
-	if err != nil {
-		panic(err)
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-	tlsCert, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		panic(err)
-	}
-	return &tls.Config{Certificates: []tls.Certificate{tlsCert}}
-}
-
 func createPeer(length int, buff []byte) (*pb.Peer, error) {
 	peer := new(pb.Peer)
 	err := json.Unmarshal(buff[:length], &peer)
@@ -129,9 +104,28 @@ func createPeer(length int, buff []byte) (*pb.Peer, error) {
 	return peer, nil
 }
 
+func registerAsNode() {
+	conn, err := grpc.Dial(LB_IP, grpc.WithInsecure())
+	if err != nil {
+		log.Printf("Failed to dial to %s with %v", LB_IP, err)
+	}
+	defer conn.Close()
+	c := pb.NewServerClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	nodeList, err = c.registerAsNode(util.privateIP())
+	if err != nil {
+		log.Printf("Error from %s of %v", node, err)
+	}
+	for _, node := range nodeList {
+		nodeMap[node] = 1
+	}
+}
+
 func main() {
 	var err error
-	connection, err := quic.ListenAddr(":"+PORT, generateTLSConfig(), nil)
+	registerAsNode()
+	connection, err := quic.ListenAddr(":"+PORT, util.generateTLSConfig(), nil)
 	buff := make([]byte, 1000)
 	if err != nil {
 		log.Fatal(err)
@@ -164,7 +158,7 @@ func main() {
 				delete(peerMap, peer.GetFriend())
 				notifyPeerUpdate(peerMap[peer.GetFriend()], false)
 				fmt.Println("Connecting " + peer.Name + " and " + peer.Friend)
-				//TODO, dial both peers and send the information to them
+				//TODO, send peer information to both peers
 				continue
 			}
 			peerMap[peer.GetName()] = peer
