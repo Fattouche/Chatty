@@ -20,7 +20,7 @@ message Response{
 message Request{}
 
 message Node{
-    repeated string node = 1;
+    string IP = 1;
     int32 notify_others = 2;
 }
 
