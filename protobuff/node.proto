@@ -7,9 +7,10 @@ message Peer{
     string pub_ip = 2;
     string name = 3;
     string friend = 4;
-    string filename = 5;
-    string filepath = 6;
-    string filesize = 7;
+}
+
+message NodeList{
+    repeated Node nodes = 1;
 }
 
 message Response{
@@ -22,7 +23,7 @@ message Node{
 }
 
 service LoadBalancer{
-    rpc RegisterNode(Node) returns(Response) {}
+    rpc RegisterNode(Node) returns(NodeList) {}
 }
 
 service Server{
