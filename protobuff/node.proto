@@ -28,5 +28,6 @@ service LoadBalancer{
 service Server{
     rpc NodeDown(Node) returns(Response) {}
     rpc PeerArrival(Peer) returns(Response) {}
+    rpc PeerRemoval(Peer) returns(Response) {}
 }
 
