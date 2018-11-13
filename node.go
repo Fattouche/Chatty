@@ -168,7 +168,7 @@ func main() {
 				continue
 			}
 			peerMap[peer.GetName()] = peer
-			notifyPeerArrival(peer, true)
+			notifyPeerUpdate(peer, true)
 		}
 	}
 }
