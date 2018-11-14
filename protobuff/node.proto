@@ -30,7 +30,8 @@ service LoadBalancer{
 }
 
 service Rendezvous{
-    rpc NodeDown(Node) returns(Response) {}
+    rpc NodeRemoval(Node) returns(Response) {}
+    rpc NodeArrival(Node) returns(Response) {}
     rpc PeerArrival(Peer) returns(Response) {}
     rpc PeerRemoval(Peer) returns(Response) {}
     rpc HealthCheck(Request) returns (Response);
