@@ -7,16 +7,10 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
-	"log"
 	"math/big"
 	"net"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
-)
-
-const (
-	GRPC_PORT = "50001"
 )
 
 type serverType func(*grpc.Server, interface{})
@@ -78,19 +72,4 @@ func GenerateTLSConfig() *tls.Config {
 		panic(err)
 	}
 	return &tls.Config{Certificates: []tls.Certificate{tlsCert}}
-}
-
-// Starts a generic GRPC server
-func StartGRPCServer(fn serverType, t interface{}) {
-	lis, err := net.Listen("tcp", GRPC_PORT)
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	s := grpc.NewServer()
-	fn(s, t)
-	// Register reflection service on gRPC server.
-	reflection.Register(s)
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
 }
