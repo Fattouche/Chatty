@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math"
 	"net"
@@ -25,6 +26,10 @@ var roundRobinIndex int
 
 func (s *loadbalancer) RegisterNode(ctx context.Context, node *pb.Node) (*pb.NodeList, error) {
 	nodeList.Nodes = append(nodeList.Nodes, node)
+	if len(nodeList.Nodes) > 1 {
+		notifyNodeUpdate(node, true)
+	}
+	fmt.Println("Got a new node ", node.IP)
 	return nodeList, nil
 }
 
@@ -32,6 +37,28 @@ func (s *loadbalancer) RendevouszServerIP(ctx context.Context, req *pb.Request) 
 	roundRobinIndex := math.Mod(float64(roundRobinIndex+1), float64(len(nodeList.Nodes)))
 	node := nodeList.Nodes[int(roundRobinIndex)]
 	return node, nil
+}
+
+func notifyNodeUpdate(updatedNode *pb.Node, arrival bool) {
+	node := nodeList.Nodes[0]
+	conn, err := grpc.Dial(node.IP, grpc.WithInsecure())
+	if err != nil {
+		log.Printf("Failed to dial to %s with %v\n", node, err)
+	}
+	defer conn.Close()
+	c := pb.NewRendezvousClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	updatedNode.NotifyOthers = 1
+	if arrival {
+		_, err = c.NodeArrival(ctx, updatedNode)
+	} else {
+		_, err = c.NodeRemoval(ctx, updatedNode)
+	}
+	if err != nil {
+		log.Printf("Node %v failed healthcheck, removing from list", node.IP)
+		removeNodeFromList(node)
+	}
 }
 
 // It would probably be better to use UDP for this healthcheck because it puts less strain on both sides
@@ -61,7 +88,11 @@ func healthCheck() {
 func removeNodeFromList(deadNode *pb.Node) {
 	for i, node := range nodeList.Nodes {
 		if node.IP == deadNode.IP {
+			fmt.Println("Removing node ", node.IP)
 			nodeList.Nodes = append(nodeList.Nodes[:i], nodeList.Nodes[i+1:]...)
+			if len(nodeList.Nodes) > 0 {
+				notifyNodeUpdate(deadNode, false)
+			}
 		}
 	}
 }

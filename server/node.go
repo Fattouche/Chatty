@@ -29,11 +29,27 @@ var localGRPCAddr string
 var nodeMap = make(map[string]int)
 var peerMap map[string]*pb.Peer
 
-func (s *server) NodeDown(ctx context.Context, node *pb.Node) (*pb.Response, error) {
+func (s *server) NodeRemoval(ctx context.Context, node *pb.Node) (*pb.Response, error) {
 	var status string
 	delete(nodeMap, node.IP)
+	fmt.Println("New Node removed: ", node.IP)
 	if node.GetNotifyOthers() == 1 {
-		err := notifyDeadNode(node.GetIP())
+		err := notifyNodeUpdate(node, false)
+		if err != nil {
+			status = err.Error()
+		} else {
+			status = "ok"
+		}
+	}
+	return &pb.Response{Status: status}, nil
+}
+
+func (s *server) NodeArrival(ctx context.Context, node *pb.Node) (*pb.Response, error) {
+	nodeMap[node.IP] = 1
+	var status string
+	fmt.Println("New Node arrived: ", node.IP)
+	if node.GetNotifyOthers() == 1 {
+		err := notifyNodeUpdate(node, true)
 		if err != nil {
 			status = err.Error()
 		} else {
@@ -57,20 +73,28 @@ func (s *server) HealthCheck(ctx context.Context, req *pb.Request) (*pb.Response
 	return &pb.Response{Status: "ok"}, nil
 }
 
-func notifyDeadNode(deadNodeIP string) error {
+func notifyNodeUpdate(nodeToUpdate *pb.Node, arrival bool) error {
 	var err error
-	for node := range nodeMap {
-		conn, err := grpc.Dial(node, grpc.WithInsecure())
+	nodeToUpdate.NotifyOthers = DONT_NOTIFY_OTHERS
+	for addr := range nodeMap {
+		if addr == localGRPCAddr || nodeToUpdate.IP == addr {
+			continue
+		}
+		conn, err := grpc.Dial(addr, grpc.WithInsecure())
 		if err != nil {
-			log.Printf("Failed to dial to %s with %v", node, err)
+			log.Printf("Failed to dial to %s with %v", addr, err)
 		}
 		defer conn.Close()
 		c := pb.NewRendezvousClient(conn)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		_, err = c.NodeDown(ctx, &pb.Node{IP: deadNodeIP, NotifyOthers: DONT_NOTIFY_OTHERS})
+		if arrival {
+			_, err = c.NodeArrival(ctx, nodeToUpdate)
+		} else {
+			_, err = c.NodeRemoval(ctx, nodeToUpdate)
+		}
 		if err != nil {
-			log.Printf("Error from %s of %v", node, err)
+			log.Printf("Error from %s of %v", addr, err)
 		}
 	}
 	//only returns the last error unfortunately
@@ -79,10 +103,13 @@ func notifyDeadNode(deadNodeIP string) error {
 
 func notifyPeerUpdate(peer *pb.Peer, arriving bool) error {
 	var err error
-	for node := range nodeMap {
-		conn, err := grpc.Dial(node, grpc.WithInsecure())
+	for addr := range nodeMap {
+		if addr == localGRPCAddr {
+			continue
+		}
+		conn, err := grpc.Dial(addr, grpc.WithInsecure())
 		if err != nil {
-			log.Printf("Failed to dial to %s with %v", node, err)
+			log.Printf("Failed to dial to %s with %v", addr, err)
 		}
 		defer conn.Close()
 		c := pb.NewRendezvousClient(conn)
@@ -94,7 +121,7 @@ func notifyPeerUpdate(peer *pb.Peer, arriving bool) error {
 			_, err = c.PeerRemoval(ctx, peer)
 		}
 		if err != nil {
-			log.Printf("Error from %s of %v", node, err)
+			log.Printf("Error from %s of %v", addr, err)
 		}
 	}
 	return err
@@ -119,12 +146,13 @@ func registerAsNode() {
 	c := pb.NewLoadBalancerClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	privIp, err := util.PrivateIP()
-	if err != nil {
-		log.Printf("Error when trying to find private ip: ", err.Error())
-	}
-	myNode := &pb.Node{IP: privIp, NotifyOthers: DONT_NOTIFY_OTHERS}
+	//privIp, err := util.PrivateIP()
+	//if err != nil {
+	//	log.Printf("Error when trying to find private ip: ", err.Error())
+	//}
+	myNode := &pb.Node{IP: localGRPCAddr, NotifyOthers: DONT_NOTIFY_OTHERS}
 	nodeList, err := c.RegisterNode(ctx, myNode)
+	fmt.Println("Node list: ", nodeList.Nodes)
 	if err != nil {
 		log.Printf("Error from %s of %v", LB_IP, err)
 	}
@@ -153,9 +181,8 @@ func main() {
 	flag.Parse()
 	localGRPCAddr = "127.0.0.1:" + *port
 	var err error
-	StartGRPCServer()
+	go StartGRPCServer()
 	registerAsNode()
-	return
 	connection, err := quic.ListenAddr(":", util.GenerateTLSConfig(), nil)
 	buff := make([]byte, 1000)
 	if err != nil {
