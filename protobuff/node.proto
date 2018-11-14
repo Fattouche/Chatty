@@ -29,7 +29,7 @@ service LoadBalancer{
     rpc ConnectToFriend(Request) returns(Node) {}
 }
 
-service Server{
+service Rendezvous{
     rpc NodeDown(Node) returns(Response) {}
     rpc PeerArrival(Peer) returns(Response) {}
     rpc PeerRemoval(Peer) returns(Response) {}
