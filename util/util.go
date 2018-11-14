@@ -82,7 +82,7 @@ func GenerateTLSConfig() *tls.Config {
 }
 
 // Starts a generic GRPC server
-func startGRPCServer(fn serverType) {
+func StartGRPCServer(fn serverType) {
 	lis, err := net.Listen("tcp", GRPC_PORT)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
