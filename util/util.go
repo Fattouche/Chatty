@@ -19,8 +19,7 @@ const (
 	GRPC_PORT = "50001"
 )
 
-type server struct{}
-type serverType func(*grpc.Server, *server)
+type serverType func(*grpc.Server, interface{})
 
 // externalIP searches through the machines interfaces to collect its private IP within the subnet.
 func PrivateIP() (string, error) {
@@ -82,13 +81,13 @@ func GenerateTLSConfig() *tls.Config {
 }
 
 // Starts a generic GRPC server
-func StartGRPCServer(fn serverType) {
+func StartGRPCServer(fn serverType, t interface{}) {
 	lis, err := net.Listen("tcp", GRPC_PORT)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	fn(s, &server{})
+	fn(s, t)
 	// Register reflection service on gRPC server.
 	reflection.Register(s)
 	if err := s.Serve(lis); err != nil {
