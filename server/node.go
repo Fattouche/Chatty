@@ -22,17 +22,22 @@ const (
 	LB_IP              = "127.0.0.1:50000"
 )
 
+// This server implements the protobuff Node type
 type server struct{}
 
 var localGRPCAddr string
 
+// nodeMap keeps track of all the rendezvous servers(nodes)
 var nodeMap = make(map[string]int)
+
+// peerMap keeps track of all the peer information
 var peerMap map[string]*pb.Peer
 
+// Removes a node from our nodeMap and notifies the other nodes if neccesary
 func (s *server) NodeRemoval(ctx context.Context, node *pb.Node) (*pb.Response, error) {
 	var status string
 	delete(nodeMap, node.IP)
-	fmt.Println("New Node removed: ", node.IP)
+	log.Println("Node removed: ", node.IP)
 	if node.GetNotifyOthers() == 1 {
 		err := notifyNodeUpdate(node, false)
 		if err != nil {
@@ -44,10 +49,11 @@ func (s *server) NodeRemoval(ctx context.Context, node *pb.Node) (*pb.Response, 
 	return &pb.Response{Status: status}, nil
 }
 
+// Adds a new node to the nodeMap and notifies other nodes if necessary
 func (s *server) NodeArrival(ctx context.Context, node *pb.Node) (*pb.Response, error) {
 	nodeMap[node.IP] = 1
 	var status string
-	fmt.Println("New Node arrived: ", node.IP)
+	log.Println("New Node arrived: ", node.IP)
 	if node.GetNotifyOthers() == 1 {
 		err := notifyNodeUpdate(node, true)
 		if err != nil {
@@ -59,20 +65,24 @@ func (s *server) NodeArrival(ctx context.Context, node *pb.Node) (*pb.Response, 
 	return &pb.Response{Status: status}, nil
 }
 
+// A new peer has arrived
 func (s *server) PeerArrival(ctx context.Context, peer *pb.Peer) (*pb.Response, error) {
 	peerMap[peer.GetName()] = peer
 	return &pb.Response{Status: "ok"}, nil
 }
 
+// A peer can be deleted
 func (s *server) PeerRemoval(ctx context.Context, peer *pb.Peer) (*pb.Response, error) {
 	delete(peerMap, peer.GetName())
 	return &pb.Response{Status: "ok"}, nil
 }
 
+// Healthcheck to satisfy the loadbalancers checks
 func (s *server) HealthCheck(ctx context.Context, req *pb.Request) (*pb.Response, error) {
 	return &pb.Response{Status: "ok"}, nil
 }
 
+// A general function to grpc dial to other nodes within the cluster to tell them of a node arrival or removal
 func notifyNodeUpdate(nodeToUpdate *pb.Node, arrival bool) error {
 	var err error
 	nodeToUpdate.NotifyOthers = DONT_NOTIFY_OTHERS
@@ -101,6 +111,7 @@ func notifyNodeUpdate(nodeToUpdate *pb.Node, arrival bool) error {
 	return err
 }
 
+// A general function to grpc dial to other nodes within the cluster to tell them of a peer arrival or removal
 func notifyPeerUpdate(peer *pb.Peer, arriving bool) error {
 	var err error
 	for addr := range nodeMap {
@@ -127,6 +138,7 @@ func notifyPeerUpdate(peer *pb.Peer, arriving bool) error {
 	return err
 }
 
+// Creates a new peer
 func createPeer(length int, buff []byte) (*pb.Peer, error) {
 	peer := new(pb.Peer)
 	err := json.Unmarshal(buff[:length], &peer)
@@ -137,6 +149,7 @@ func createPeer(length int, buff []byte) (*pb.Peer, error) {
 	return peer, nil
 }
 
+// Registeres the current node as a node with the loadbalancer, this information will be broadcasted out
 func registerAsNode() {
 	conn, err := grpc.Dial(LB_IP, grpc.WithInsecure())
 	if err != nil {
@@ -152,7 +165,7 @@ func registerAsNode() {
 	//}
 	myNode := &pb.Node{IP: localGRPCAddr, NotifyOthers: DONT_NOTIFY_OTHERS}
 	nodeList, err := c.RegisterNode(ctx, myNode)
-	fmt.Println("Node list: ", nodeList.Nodes)
+	log.Println("Registered as node, recieved current list: ", nodeList.Nodes)
 	if err != nil {
 		log.Printf("Error from %s of %v", LB_IP, err)
 	}
@@ -183,6 +196,7 @@ func main() {
 	var err error
 	go StartGRPCServer()
 	registerAsNode()
+	// Listen for peer connections
 	connection, err := quic.ListenAddr(":", util.GenerateTLSConfig(), nil)
 	buff := make([]byte, 1000)
 	if err != nil {
@@ -207,11 +221,13 @@ func main() {
 		if err != nil {
 			fmt.Println("Error: ", err)
 		}
+		// Try to create a peer from the quic connection
 		peer, err := createPeer(len, buff)
 		if err != nil {
 			fmt.Println("Error parsing peer info: " + err.Error())
 			continue
 		} else {
+			// If the peers friend is already waiting, we can just send peer information to both peers and remove from peerMap.
 			if _, ok := peerMap[peer.GetFriend()]; ok {
 				delete(peerMap, peer.GetFriend())
 				notifyPeerUpdate(peerMap[peer.GetFriend()], false)
@@ -219,6 +235,7 @@ func main() {
 				//TODO, send peer information to both peers
 				continue
 			}
+			// If peers friend is not already waiting then this peer has to wait until the friend arrives.
 			peerMap[peer.GetName()] = peer
 			notifyPeerUpdate(peer, true)
 		}
