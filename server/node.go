@@ -30,6 +30,9 @@ var localGRPCAddr string
 // nodeMap keeps track of all the rendezvous servers(nodes)
 var nodeMap = make(map[string]int)
 
+// Keep track of connections from peers
+var connMap map[string]quic.Stream
+
 // peerMap keeps track of all the peer information
 var peerMap map[string]*pb.Peer
 
@@ -149,6 +152,25 @@ func createPeer(length int, buff []byte) (*pb.Peer, error) {
 	return peer, nil
 }
 
+// Sends peer info to both sides
+func exchangePeerInfo(peer *pb.Peer, stream quic.Stream) {
+	friend := peerMap[peer.Friend]
+	friend.Dialer = false
+	msgForPeer, err := json.Marshal(friend)
+	if err != nil {
+		fmt.Println("Error marshalling peer: " + err.Error())
+	}
+	stream.Write(msgForPeer)
+
+	friendStream := connMap[friend.GetName()]
+	peer.Dialer = true
+	msgForFriend, err := json.Marshal(peer)
+	if err != nil {
+		fmt.Println("Error marshalling in peer: " + err.Error())
+	}
+	friendStream.Write(msgForFriend)
+}
+
 // Registeres the current node as a node with the loadbalancer, this information will be broadcasted out
 func registerAsNode() {
 	conn, err := grpc.Dial(LB_IP, grpc.WithInsecure())
@@ -229,14 +251,15 @@ func main() {
 		} else {
 			// If the peers friend is already waiting, we can just send peer information to both peers and remove from peerMap.
 			if _, ok := peerMap[peer.GetFriend()]; ok {
-				delete(peerMap, peer.GetFriend())
 				notifyPeerUpdate(peerMap[peer.GetFriend()], false)
 				fmt.Println("Connecting " + peer.Name + " and " + peer.Friend)
-				//TODO, send peer information to both peers
+				exchangePeerInfo(peer, stream)
+				delete(peerMap, peer.GetFriend())
 				continue
 			}
 			// If peers friend is not already waiting then this peer has to wait until the friend arrives.
 			peerMap[peer.GetName()] = peer
+			connMap[peer.Name] = stream
 			notifyPeerUpdate(peer, true)
 		}
 	}
