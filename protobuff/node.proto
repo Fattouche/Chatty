@@ -7,6 +7,7 @@ message Peer{
     string pub_ip = 2;
     string name = 3;
     string friend = 4;
+    bool Dialer = 5;
 }
 
 message NodeList{
