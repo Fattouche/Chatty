@@ -21,8 +21,9 @@ message Response{
 message Request{}
 
 message Node{
-    string IP = 1;
-    int32 notify_others = 2;
+    string pub_IP = 1;
+    string grpc_IP = 2;
+    int32 notify_others = 3;
 }
 
 service LoadBalancer{
