@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math"
 	"net"
@@ -13,9 +14,7 @@ import (
 )
 
 const (
-	GRPC_PORT              = ":50000"
-	HEALTH_PORT            = ":51000"
-	MAX_HEALTHCHECK_MISSES = 5
+	GRPC_PORT = ":50000"
 )
 
 // Used to implement the grpc loadbalancer server
@@ -23,7 +22,7 @@ type loadbalancer struct{}
 
 // Keeps track of which nodes are currently alive
 var nodeList *pb.NodeList
-var roundRobinIndex int
+var RoundRobinIndex float64
 
 // Registers a new node and notifies existing nodes of its arrival
 func (s *loadbalancer) RegisterNode(ctx context.Context, node *pb.Node) (*pb.NodeList, error) {
@@ -31,14 +30,14 @@ func (s *loadbalancer) RegisterNode(ctx context.Context, node *pb.Node) (*pb.Nod
 	if len(nodeList.Nodes) > 1 {
 		notifyNodeUpdate(node, true)
 	}
-	log.Println("New node arrival ", node.IP)
+	log.Println("New node arrival ", node.Grpc_IP)
 	return nodeList, nil
 }
 
 // Returns the IP of a node to one of the peers
 func (s *loadbalancer) RendevouszServerIP(ctx context.Context, req *pb.Request) (*pb.Node, error) {
-	roundRobinIndex := math.Mod(float64(roundRobinIndex+1), float64(len(nodeList.Nodes)))
-	node := nodeList.Nodes[int(roundRobinIndex)]
+	RoundRobinIndex = math.Mod(RoundRobinIndex+1, float64(len(nodeList.Nodes)))
+	node := nodeList.Nodes[int(RoundRobinIndex)]
 	return node, nil
 }
 
@@ -47,7 +46,7 @@ func notifyNodeUpdate(updatedNode *pb.Node, arrival bool) {
 	// The node that will be responsible for telling all the other nodes about the update
 	node := nodeList.Nodes[0]
 	// Setup GRPC connection
-	conn, err := grpc.Dial(node.IP, grpc.WithInsecure())
+	conn, err := grpc.Dial(node.Grpc_IP, grpc.WithInsecure())
 	if err != nil {
 		log.Printf("Failed to dial to %s with %v\n", node, err)
 	}
@@ -68,8 +67,9 @@ func notifyNodeUpdate(updatedNode *pb.Node, arrival bool) {
 // But this is much easier to implement than trying to handle several different connections.
 func healthCheck() {
 	for {
+		time.Sleep(time.Second * 5)
 		for _, node := range nodeList.Nodes {
-			conn, err := grpc.Dial(node.IP, grpc.WithInsecure())
+			conn, err := grpc.Dial(node.Grpc_IP, grpc.WithInsecure())
 			if err != nil {
 				log.Printf("Failed to dial to %s with %v\n", node, err)
 			}
@@ -80,7 +80,7 @@ func healthCheck() {
 			// Do the healthcheck
 			_, err = c.HealthCheck(ctx, &pb.Request{})
 			if err != nil {
-				log.Printf("Node %v failed healthcheck, removing from list", node.IP)
+				log.Printf("Node %v failed healthcheck, removing from list", node.Grpc_IP)
 				// If the node fails the healthcheck, remove it from our list of healthy nodes
 				removeNodeFromList(node)
 			}
@@ -107,6 +107,7 @@ func removeNodeFromList(deadNode *pb.Node) {
 func StartGRPCServer() {
 	nodeList = new(pb.NodeList)
 	lis, err := net.Listen("tcp", GRPC_PORT)
+	fmt.Println("Listening on: ", lis.Addr().String())
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -119,6 +120,7 @@ func StartGRPCServer() {
 	}
 }
 
+// Start healthchecks and grpc servers
 func main() {
 	go healthCheck()
 	StartGRPCServer()
