@@ -21,8 +21,8 @@ message Response{
 message Request{}
 
 message Node{
-    string pub_IP = 1;
-    string grpc_IP = 2;
+    string PUB_IP = 1;
+    string GRPC_IP = 2;
     int32 notify_others = 3;
 }
 
