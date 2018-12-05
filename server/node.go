@@ -197,6 +197,7 @@ func StartGRPCServer() {
 	}
 }
 
+// Waits until the other peer has connected and replies to the current peer connection
 func watchForFriend(stream quic.Stream, session quic.Session, peer *pb.Peer, dialer bool) {
 	for {
 		if _, ok := peerMap[peer.GetFriend()]; ok {
@@ -227,8 +228,10 @@ func main() {
 	gcprAddr = *pub_ip + GRPC_PORT
 	quicAddr = *pub_ip + QUIC_PORT
 	var err error
+	// start listening to grpc calls
 	go StartGRPCServer()
 	time.Sleep(time.Microsecond * 5000)
+	// Tell the loadbalancer you are alive
 	registerAsNode()
 	// Listen for peer connections
 	addr, err := net.ResolveUDPAddr("udp4", QUIC_PORT)
@@ -241,6 +244,7 @@ func main() {
 		return
 	}
 	peerMap = make(map[string]*pb.Peer)
+	// This is where the peer stuff starts happening
 	for {
 		//Blocks waiting for a connection
 		session, err := connection.Accept()

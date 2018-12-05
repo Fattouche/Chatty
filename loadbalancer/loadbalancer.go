@@ -63,8 +63,8 @@ func notifyNodeUpdate(updatedNode *pb.Node, arrival bool) {
 	}
 }
 
-// It would probably be better to use UDP for this healthcheck because it puts less strain on both sides
-// But this is much easier to implement than trying to handle several different connections.
+// Iterates through the list of servers and checks their health every 5 seconds.
+// If a server does not respond to the healthcheck it will be removed.
 func healthCheck() {
 	for {
 		time.Sleep(time.Second * 5)
