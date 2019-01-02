@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -151,7 +150,7 @@ func createPeer(length int, buff []byte, pubIP string) (*pb.Peer, error) {
 	peer := new(pb.Peer)
 	err := json.Unmarshal(buff[:length], &peer)
 	if err != nil {
-		fmt.Println("Error in createPeer: " + err.Error())
+		log.Println("Error in createPeer: " + err.Error())
 		return nil, err
 	}
 	peer.PubIp = pubIP
@@ -169,7 +168,7 @@ func registerAsNode() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	myNode := &pb.Node{Grpc_IP: gcprAddr, Pub_IP: quicAddr, NotifyOthers: DONT_NOTIFY_OTHERS}
-	fmt.Println("Dialining to :", lbAddr)
+	log.Println("Dialining to :", lbAddr)
 	nodeList, err := c.RegisterNode(ctx, myNode)
 	if err != nil {
 		log.Printf("Error from %s of %v", lbAddr, err)
@@ -205,7 +204,7 @@ func watchForFriend(stream quic.Stream, session quic.Session, peer *pb.Peer, dia
 			peerFriend.Dialer = dialer
 			msgForPeer, err := json.Marshal(peerFriend)
 			if err != nil {
-				fmt.Println("Error marshalling in checkpeer: " + err.Error())
+				log.Println("Error marshalling in checkpeer: " + err.Error())
 			}
 			log.Printf("Notifying %s of %s info", peer.Name, peer.Friend)
 			stream.Write(msgForPeer)
@@ -262,13 +261,13 @@ func main() {
 		defer stream.Close()
 		len, err := stream.Read(buff)
 		if err != nil {
-			fmt.Println("Error: ", err)
+			log.Println("Error: ", err)
 		}
 		// Try to create a peer from the quic connection
 		peer, err := createPeer(len, buff, pubIP.String())
-		fmt.Println("Got a peer connection from: ", peer.Name)
+		log.Println("Got a peer connection from: ", peer.Name)
 		if err != nil {
-			fmt.Println("Error parsing peer info: " + err.Error())
+			log.Println("Error parsing peer info: " + err.Error())
 			continue
 		} else {
 			notifyPeerUpdate(peer, true)

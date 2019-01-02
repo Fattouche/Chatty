@@ -36,34 +36,6 @@ const (
 	BUFFERSIZE = 48000
 )
 
-// holePunch punches a hole through users NATs if they exist in different networks
-func holePunch(server *net.UDPConn, addr *net.UDPAddr) error {
-	connected := false
-	// Try to send udp packets
-	go func() {
-		for connected != true {
-			server.WriteToUDP([]byte("1"), addr)
-			time.Sleep(10 * time.Millisecond)
-		}
-	}()
-	buff := make([]byte, 100)
-	// If you don't recieve a udp packet in 5 seconds return
-	server.SetReadDeadline(time.Now().Add(time.Second * 5))
-	for {
-		// Listen for udp packets
-		_, recvAddr, err := server.ReadFromUDP(buff)
-		if err != nil {
-			connected = true
-			return err
-		}
-		if recvAddr.String() == addr.String() {
-			connected = true
-			time.Sleep(time.Millisecond * 500)
-			return nil
-		}
-	}
-}
-
 // Dials to the loadbalancer and gets an IP address of one of the live rendezvous servers
 func grpcRendezvousAddr() string {
 	conn, err := grpc.Dial(lbIP, grpc.WithInsecure())
@@ -126,49 +98,6 @@ func getPeerInfo(server *net.UDPConn) error {
 	return nil
 }
 
-// This peer is the sender so quic dial to the reciever(other peer)
-func connectAsSender(server *net.UDPConn, addr string) (quic.Stream, error) {
-	udpAddr, err := net.ResolveUDPAddr("udp", addr)
-	session, err := quic.Dial(server, udpAddr, addr, &tls.Config{InsecureSkipVerify: true}, nil)
-	if err != nil {
-		log.Println("Error: ", err)
-		server.Close()
-		return nil, err
-	}
-	stream, err := session.OpenStreamSync()
-	if err != nil {
-		return nil, err
-	}
-	stream.Write([]byte("\n"))
-	return stream, nil
-}
-
-// This peer is the reciever so listen on quic for the other peer dialing
-func connectAsReciever(server *net.UDPConn, addr string) (quic.Stream, error) {
-	server.SetReadDeadline(time.Now().Add(time.Second * 10))
-	connection, err := quic.Listen(server, util.GenerateTLSConfig(), nil)
-	if err != nil {
-		log.Println("Error: " + err.Error())
-		return nil, err
-	}
-	session, err := connection.Accept()
-	server.SetReadDeadline(time.Now().Add(time.Hour * 24))
-	if err != nil {
-		log.Println("Error: " + err.Error())
-		server.Close()
-		return nil, err
-	}
-
-	stream, err := session.AcceptStream()
-	if err != nil {
-		log.Println("Error: " + err.Error())
-		return nil, err
-	}
-	garbage := make([]byte, 10)
-	stream.Read(garbage)
-	return stream, nil
-}
-
 // reads from the quick stream and outputs it to the console with their name
 func read(stream quic.Stream) {
 	defer stream.Close()
@@ -192,45 +121,17 @@ func write(stream quic.Stream) {
 	}
 }
 
-// The orchestrator function for deciding who is the sender/reciever and actually reading/writing
-func chat(server *net.UDPConn, addr string) error {
-	var stream quic.Stream
-	var err error
-	if myPeerInfo.Dialer {
-		stream, err = connectAsSender(server, addr)
-		if err != nil {
-			return err
-		}
-	} else {
-		stream, err = connectAsReciever(server, addr)
-		if err != nil {
-			return err
-		}
+// Connects to a peer and starts reading/writing
+func chatWithPeer(server *net.UDPConn) error {
+	stream, err := connect(server, friend.Priv_ip, friend.Pub_ip, myPeerInfo.Dialer)
+	if err != nil {
+		log.Println(err)
+		return err
 	}
 	log.Println("Connected to: " + myPeerInfo.Friend + " you can start typing!\n")
 	go read(stream)
 	write(stream)
 	return nil
-}
-
-// Attempts to punch a hole through the nat, if that fails it will connect privately.
-func chatWithPeer(server *net.UDPConn) error {
-	var err error
-	addr, _ := net.ResolveUDPAddr("udp", friend.Pub_ip)
-	laddr, _ := net.ResolveUDPAddr("udp", myPeerInfo.Priv_ip)
-	public := true
-	err = holePunch(server, addr)
-	if err != nil {
-		server.Close()
-		time.Sleep(time.Millisecond * 500)
-		server, _ = net.ListenUDP("udp", laddr)
-		public = false
-	}
-	if public {
-		return chat(server, friend.Pub_ip)
-	} else {
-		return chat(server, friend.Priv_ip)
-	}
 }
 
 // takes in myName and friend which is the only thing that is needed to connect to the friend.

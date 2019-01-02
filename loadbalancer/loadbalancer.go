@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math"
 	"net"
@@ -36,6 +35,7 @@ func (s *loadbalancer) RegisterNode(ctx context.Context, node *pb.Node) (*pb.Nod
 
 // Returns the IP of a node to one of the peers
 func (s *loadbalancer) RendevouszServerIP(ctx context.Context, req *pb.Request) (*pb.Node, error) {
+	//Chooses a server IP to loadbalance to using round robin
 	RoundRobinIndex = math.Mod(RoundRobinIndex+1, float64(len(nodeList.Nodes)))
 	node := nodeList.Nodes[int(RoundRobinIndex)]
 	return node, nil
@@ -107,7 +107,7 @@ func removeNodeFromList(deadNode *pb.Node) {
 func StartGRPCServer() {
 	nodeList = new(pb.NodeList)
 	lis, err := net.Listen("tcp", GRPC_PORT)
-	fmt.Println("Listening on: ", lis.Addr().String())
+	log.Println("Listening on: ", lis.Addr().String())
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
